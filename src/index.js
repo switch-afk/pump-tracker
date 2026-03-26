@@ -142,11 +142,26 @@ function wireEvents() {
       uniqueSellers: token.uniqueSellers instanceof Set ? token.uniqueSellers.size : token.uniqueSellers,
     };
 
-    // 1. Send initial embed immediately — shows ⏳ pending status
-    sendGraduation(serialized);
-
-    // 2. Start DEX price tracking
-    graduationTracker.startTracking(serialized);
+    // Quick Mayhem pre-check from pump.fun API before sending any embeds
+    // We fetch asynchronously — if MCap < $6K we skip everything
+    fetch(`https://frontend-api.pump.fun/coins/${token.mint}`, {
+      signal: AbortSignal.timeout(4000),
+    }).then(r => r.ok ? r.json() : null).then(pumpData => {
+      const mcapUsd = pumpData?.usd_market_cap || null;
+      if (mcapUsd !== null && mcapUsd < 6000) {
+        log.warn(`🗑 MAYHEM TOKEN — skipping entirely: ${serialized.symbol} MCap $${mcapUsd.toFixed(0)}`, {
+          mint: token.mint.slice(0, 8),
+        });
+        return; // Don't send embed, don't start tracking
+      }
+      // Normal graduation flow
+      sendGraduation(serialized);
+      graduationTracker.startTracking(serialized);
+    }).catch(() => {
+      // pump.fun API failed — proceed normally, graduationTracker will catch it
+      sendGraduation(serialized);
+      graduationTracker.startTracking(serialized);
+    });
   });
 
   registry.on('enriched', (token, filterResult) => {
@@ -241,6 +256,17 @@ function wireEvents() {
   });
 
   graduationTracker.on('entrySignal', (token, pair, dumpData) => {
+    // Hard block — never fire entry signals for Mayhem / near-zero MCap tokens
+    const mcapUsd = pair.mcap || pair.fdv || dumpData.liquidityUsd * 2 || 0;
+    if (mcapUsd > 0 && mcapUsd < 6000) {
+      log.warn(`🗑 Suppressed entry signal — Mayhem token: ${token.symbol} MCap $${mcapUsd.toFixed(0)}`);
+      return;
+    }
+    // Also block if liquidity is under $500 — not tradeable
+    if (dumpData.liquidityUsd < 500) {
+      log.warn(`🗑 Suppressed entry signal — too low liquidity: ${token.symbol} $${dumpData.liquidityUsd.toFixed(0)}`);
+      return;
+    }
     log.info(`🎯 Entry signal wired → Discord for ${token.symbol}`);
     sendEntrySignal(token, pair, dumpData);
   });

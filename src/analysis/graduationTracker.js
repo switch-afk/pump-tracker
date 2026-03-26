@@ -85,8 +85,21 @@ class GraduationTracker extends EventEmitter {
 
       state.lastPair = pair;
 
-      // ── On first successful poll: set listing price + update name/symbol from DEX ──
+      // ── On first successful poll: set listing price + Mayhem check ──
       if (!state.listingPrice) {
+
+        // ── MAYHEM FILTER — kill tracking if MCap < $6K at listing ──
+        // These are Mayhem program tokens with near-zero value. No entry signals,
+        // no lifecycle tracking, no Discord alerts for them.
+        const mcapUsd = pair.fdv || pair.mcap || (pair.liquidityUsd * 2);
+        if (mcapUsd > 0 && mcapUsd < 6000) {
+          log.warn(`🗑 MAYHEM TOKEN — stopping tracker: ${state.token.symbol} MCap $${mcapUsd.toFixed(0)} < $6K`, {
+            mint: mint.slice(0, 8),
+          });
+          this.stopTracking(mint, 'mayhem_token');
+          return;
+        }
+
         state.listingPrice = pair.priceUsd;
 
         // DexScreener returns baseToken.name and baseToken.symbol — update token if we only have mint slice
@@ -98,8 +111,8 @@ class GraduationTracker extends EventEmitter {
 
         log.info(`💰 Listing price set for ${state.token.symbol}`, {
           priceUsd: pair.priceUsd.toFixed(8),
-          liqUsd: pair.liquidityUsd.toFixed(0),
-          dex: pair.dex,
+          liqUsd:   pair.liquidityUsd.toFixed(0),
+          dex:      pair.dex,
         });
 
         GraduatedStore.updateTradeTracking(mint, {
