@@ -1,0 +1,18 @@
+{
+  "name": "pump-scanner",
+  "version": "1.0.0",
+  "description": "pump.fun token monitor — Discord bot edition",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.14.1",
+    "ws": "^8.16.0",
+    "node-fetch": "^3.3.2",
+    "chalk": "^5.3.0",
+    "dotenv": "^16.4.5"
+  }
+}

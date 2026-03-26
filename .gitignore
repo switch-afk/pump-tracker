@@ -1,0 +1,48 @@
+# ── Environment ──────────────────────────────────
+.env
+.env.*
+!.env.example
+
+# ── Dependencies ─────────────────────────────────
+node_modules/
+
+# ── Runtime data (never commit) ──────────────────
+# All lifecycle, token, snapshot, and log data is generated at runtime.
+# These directories can grow to hundreds of MB — keep them local.
+data/tokens/
+data/snapshots/
+data/graduated/
+data/lifecycle/
+data/logs/
+data/stats.json
+
+# Keep the data directory structure but not contents
+!data/.gitkeep
+!data/tokens/.gitkeep
+!data/snapshots/.gitkeep
+!data/graduated/.gitkeep
+!data/lifecycle/.gitkeep
+!data/logs/.gitkeep
+
+
+# ── PM2 / Process ─────────────────────────────────
+.pm2/
+pm2.log
+
+# ── OS / Editor ───────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# ── Logs ──────────────────────────────────────────
+*.log
+logs/
+npm-debug.log*
+
+# ── Misc ──────────────────────────────────────────
+*.tar.gz
+*.zip
+.cache/
