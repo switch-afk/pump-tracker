@@ -99,15 +99,22 @@ export async function getTokenPairs(mint) {
 
 /**
  * Get the best (highest liquidity) pair for a mint
- * Returns simplified price/volume object
+ * Also sums liquidity across ALL pairs (ground-zero style)
  */
 export async function getBestPair(mint) {
   const pairs = await getTokenPairs(mint);
   if (!pairs.length) return null;
 
-  // Sort by liquidity USD descending
+  // Sum liquidity across ALL pairs (pumpfun + pumpswap + raydium etc.)
+  const totalLiqUsd = pairs.reduce((sum, p) => sum + (p.liquidity?.usd || 0), 0);
+
+  // Best = highest liquidity pair
   pairs.sort((a, b) => (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0));
   const best = pairs[0];
+
+  // Aggregate volume across all pairs for better accuracy
+  const totalVol1h = pairs.reduce((sum, p) => sum + (p.volume?.h1 || 0), 0);
+  const totalVol24h = pairs.reduce((sum, p) => sum + (p.volume?.h24 || 0), 0);
 
   const result = {
     pairAddress:     best.pairAddress,
@@ -116,30 +123,40 @@ export async function getBestPair(mint) {
     baseTokenSymbol: best.baseToken?.symbol || null,
     priceUsd:      parseFloat(best.priceUsd || '0'),
     priceNative:   parseFloat(best.priceNative || '0'),
-    liquidityUsd:  best.liquidity?.usd || 0,
+    liquidityUsd:  totalLiqUsd,               // ← TOTAL across all pairs
+    liquidityBest: best.liquidity?.usd || 0,  // ← best pair only (for reference)
     liquidityBase: best.liquidity?.base || 0,
     vol5m:         best.volume?.m5 || 0,
-    vol1h:         best.volume?.h1 || 0,
+    vol1h:         totalVol1h,                // ← aggregated
     vol6h:         best.volume?.h6 || 0,
-    vol24h:        best.volume?.h24 || 0,
+    vol24h:        totalVol24h,               // ← aggregated
     txns5m_buys:   best.txns?.m5?.buys || 0,
     txns5m_sells:  best.txns?.m5?.sells || 0,
-    txns1h_buys:   best.txns?.h1?.buys || 0,
-    txns1h_sells:  best.txns?.h1?.sells || 0,
+    txns1h_buys:   (pairs.reduce((s, p) => s + (p.txns?.h1?.buys || 0), 0)),
+    txns1h_sells:  (pairs.reduce((s, p) => s + (p.txns?.h1?.sells || 0), 0)),
     priceChange5m: best.priceChange?.m5 || 0,
     priceChange1h: best.priceChange?.h1 || 0,
+    priceChange24h:best.priceChange?.h24 || 0,
     fdv:           best.fdv || 0,
     mcap:          best.marketCap || 0,
     pairCreatedAt: best.pairCreatedAt || null,
     url:           best.url || `https://dexscreener.com/solana/${best.pairAddress}`,
+    pairCount:     pairs.length,
+    allPairs:      pairs.map(p => ({ dex: p.dexId, liq: p.liquidity?.usd || 0 })),
+    // Socials from best pair info
+    websites:      best.info?.websites || [],
+    socials:       best.info?.socials  || [],
+    imageUrl:      best.info?.imageUrl || null,
+    boosts:        best.boosts?.active || 0,
   };
 
   log.info(`Best pair for ${mint.slice(0, 8)}...`, {
-    dex: result.dex,
-    priceUsd: result.priceUsd.toFixed(8),
-    liqUsd: result.liquidityUsd.toFixed(0),
-    vol1h: result.vol1h.toFixed(0),
-    buyPressure: `${result.txns5m_buys}/${result.txns5m_buys + result.txns5m_sells}`,
+    dex:          result.dex,
+    priceUsd:     result.priceUsd.toFixed(8),
+    liqUsd:       result.liquidityUsd.toFixed(0),
+    vol1h:        result.vol1h.toFixed(0),
+    buyPressure:  `${result.txns5m_buys}/${result.txns5m_buys + result.txns5m_sells}`,
+    pairs:        result.pairCount,
   });
 
   return result;

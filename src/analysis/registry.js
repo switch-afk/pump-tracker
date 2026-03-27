@@ -232,6 +232,10 @@ class TokenRegistry extends EventEmitter {
               mint: token.mint.slice(0, 8),
             });
           }
+          // Save image for Discord embed thumbnail
+          if (pumpData.image_uri && !token.imageUrl) {
+            token.imageUrl = pumpData.image_uri;
+          }
         }
       } catch { /* non-fatal — enrichment continues without MCap check */ }
 

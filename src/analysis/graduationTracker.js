@@ -108,6 +108,10 @@ class GraduationTracker extends EventEmitter {
           state.token.symbol = pair.baseTokenSymbol || state.token.symbol;
           log.info(`Updated token name from DexScreener: [${state.token.symbol}] ${state.token.name}`);
         }
+        // Save image from DexScreener if not already set
+        if (pair.imageUrl && !state.token.imageUrl) {
+          state.token.imageUrl = pair.imageUrl;
+        }
 
         log.info(`💰 Listing price set for ${state.token.symbol}`, {
           priceUsd: pair.priceUsd.toFixed(8),

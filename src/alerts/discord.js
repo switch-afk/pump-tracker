@@ -162,22 +162,29 @@ function buildGraduationEmbed(token, pair = null, enrichmentDone = false) {
   const bundled = token.bundleResult?.isBundle;
   const kolMatches = hs?.kolMatches || [];
 
-  // Name from DexScreener first, then token.name, then symbol
-  const name   = pair?.baseTokenName || (token.name !== 'Unknown' ? token.name : null);
+  // Name + symbol resolution
+  const name   = pair?.baseTokenName  || (token.name   !== 'Unknown' ? token.name   : null);
   const symbol = pair?.baseTokenSymbol || token.symbol;
-
-  // Avoid "thinkoor (THINKOOR)" — only append symbol if it differs from name
-  const title = name && name.toLowerCase() !== symbol.toLowerCase()
+  const title  = name && name.toLowerCase() !== symbol.toLowerCase()
     ? `🎓 ${name} (${symbol}) — GRADUATED`
     : `🎓 ${symbol} — GRADUATED`;
 
-  // MCap: prefer pair fdv/mcap (USD), fallback to marketCapSol estimate
+  // MCap — prefer live USD from pair, fallback to pump.fun API, then SOL estimate
   const mcapDisplay = pair?.mcap
     ? formatUsd(pair.mcap)
     : pair?.fdv
     ? formatUsd(pair.fdv)
+    : token.listingMcapUsd
+    ? formatUsd(token.listingMcapUsd)
     : formatMcapSol(token.marketCapSol);
 
+  // Price change display
+  const pctChange = (pct) => {
+    if (pct == null || pct === 0) return '—';
+    return pct >= 0 ? `🟢 +${pct.toFixed(2)}%` : `🔴 ${pct.toFixed(2)}%`;
+  };
+
+  // Filter status
   let filterValue;
   if (!enrichmentDone) {
     filterValue = '⏳ Checking...';
@@ -187,6 +194,13 @@ function buildGraduationEmbed(token, pair = null, enrichmentDone = false) {
     filterValue = '✅ Passed';
   }
 
+  // Bundle status
+  const bundleValue = !enrichmentDone
+    ? '⏳'
+    : bundled
+    ? `🚨 ${token.bundleResult.confidence}%`
+    : '✅ Clean';
+
   const color = !enrichmentDone ? COLORS.INFO
     : filterResult?.pass === false ? COLORS.ERROR
     : COLORS.GRADUATED;
@@ -194,46 +208,76 @@ function buildGraduationEmbed(token, pair = null, enrichmentDone = false) {
   const embed = new EmbedBuilder()
     .setColor(color)
     .setTitle(title)
-    .setDescription(`Bonded and migrated · Pool: \`${token.pool || 'unknown'}\``)
-    .addFields({ name: 'Mint', value: `\`${token.mint}\``, inline: false });
+    .setDescription(`Bonded and migrated · Pool: \`${token.pool || 'unknown'}\``);
 
+  // Token image — from pair info or pump.fun API cache
+  const imgUrl = pair?.imageUrl || token.imageUrl || null;
+  if (imgUrl) embed.setThumbnail(imgUrl);
+
+  // Mint
+  embed.addFields({ name: 'Mint', value: `\`${token.mint}\``, inline: false });
+
+  // Row 1: Filter | Bundle | Dev Hold
   embed.addFields(
-    { name: 'Filter',      value: filterValue,                                                                         inline: true },
-    { name: 'Bundle',      value: !enrichmentDone ? '⏳' : bundled ? `🚨 ${token.bundleResult.confidence}%` : '✅ Clean', inline: true },
-    { name: 'Dev Hold',    value: hs ? `${hs.devPct}%` : '—',                                                          inline: true },
+    { name: 'Filter',    value: filterValue,  inline: true },
+    { name: 'Bundle',    value: bundleValue,  inline: true },
+    { name: 'Dev Hold',  value: hs ? `${hs.devPct}%` : '—', inline: true },
   );
 
+  // Row 2: Top 3 Hold | Holder Score | Holders
   if (hs) {
     embed.addFields(
-      { name: 'Top 3 Hold',   value: `${hs.top3Pct}%`,       inline: true },
-      { name: 'Holder Score', value: `${hs.holderScore}/100`, inline: true },
-      { name: 'Holders',      value: `${hs.holderCount}`,     inline: true },
+      { name: 'Top 3 Hold',    value: `${hs.top3Pct}%`,       inline: true },
+      { name: 'Holder Score',  value: `${hs.holderScore}/100`, inline: true },
+      { name: 'Holders',       value: `${hs.holderCount}`,     inline: true },
     );
   }
 
-  // KOL holders section
+  // KOL holders
   if (enrichmentDone && kolMatches.length > 0) {
-    const kolList = kolMatches.slice(0, 5).map(k => `**${k.name}**`).join(', ');
-    embed.addFields({ name: `🌟 KOL Holders (${kolMatches.length})`, value: kolList, inline: false });
+    const kolList = kolMatches.slice(0, 5).map(k => `🌟 **${k.name}**`).join(', ');
+    embed.addFields({ name: `KOL Holders (${kolMatches.length})`, value: kolList, inline: false });
   }
 
+  // Market data
   if (pair) {
+    // Row 3: MCap | Listing Price | Liquidity
     embed.addFields(
-      { name: 'MCap',          value: mcapDisplay,                                         inline: true },
-      { name: 'Listing Price', value: `$${pair.priceUsd.toFixed(8)}`,                      inline: true },
-      { name: 'Liquidity',     value: formatUsd(pair.liquidityUsd),                        inline: true },
-      { name: 'DEX',           value: pair.dex,                                            inline: true },
-      { name: 'Vol 5m',        value: formatUsd(pair.vol5m),                               inline: true },
-      { name: 'Buy Pressure',  value: `${pair.txns5m_buys}B / ${pair.txns5m_sells}S`,     inline: true },
-      { name: 'Chart',         value: `[View on DexScreener](${pair.url})`,                inline: true },
+      { name: 'MCap',          value: mcapDisplay,                          inline: true },
+      { name: 'Listing Price', value: `$${pair.priceUsd.toFixed(8)}`,       inline: true },
+      { name: 'Liquidity',     value: formatUsd(pair.liquidityUsd),         inline: true },
     );
+    // Row 4: DEX | Vol 1h | Buy Pressure
+    embed.addFields(
+      { name: 'DEX',           value: pair.dex,                             inline: true },
+      { name: 'Vol 1h',        value: formatUsd(pair.vol1h),                inline: true },
+      { name: 'Buy Pressure',  value: `${pair.txns1h_buys}B / ${pair.txns1h_sells}S`, inline: true },
+    );
+    // Row 5: 1h change | 24h change | Pairs
+    embed.addFields(
+      { name: '1h Change',     value: pctChange(pair.priceChange1h),        inline: true },
+      { name: '24h Change',    value: pctChange(pair.priceChange24h),       inline: true },
+      { name: 'Pairs',         value: `${pair.pairCount || 1}`,             inline: true },
+    );
+    // Chart
+    embed.addFields({ name: 'Chart', value: `[View on DexScreener](${pair.url})`, inline: false });
   } else {
     embed.addFields(
-      { name: 'MCap',      value: mcapDisplay,                               inline: true },
-      { name: 'DEX Listing', value: '⏳ Waiting for DEX to index...', inline: false }
+      { name: 'MCap',        value: mcapDisplay,                 inline: true },
+      { name: 'DEX Listing', value: '⏳ Waiting...',             inline: true },
+      { name: '\u200b',      value: '\u200b',                    inline: true },
     );
   }
 
+  // Socials from pair if available
+  if (pair?.websites?.length || pair?.socials?.length) {
+    const links = [];
+    for (const w of (pair.websites || [])) if (w?.url) links.push(`[Website](${w.url})`);
+    for (const s of (pair.socials  || [])) if (s?.url) links.push(`[${s.platform || s.type || 'Social'}](${s.url})`);
+    if (links.length) embed.addFields({ name: 'Socials', value: links.join(' · '), inline: false });
+  }
+
+  // Links
   embed.addFields({
     name: 'Links',
     value: [
